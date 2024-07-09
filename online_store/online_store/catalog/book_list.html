@@ -1,0 +1,10 @@
+<h1>Каталог книг</h1>
+<ul>
+    {% for book in books %}
+        <li>
+            <h2>{{ book.title }}</h2>
+            <p>{{ book.author }}</p>
+            <p>{{ book.description }}</p>
+        </li>
+    {% endfor %}
+</ul>
