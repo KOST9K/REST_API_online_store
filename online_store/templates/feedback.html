@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Форма обратной связи</title>
+</head>
+<body>
+
+<h1>Оставьте свой отзыв</h1>
+
+<form method="POST" action="{% url 'feedback' %}">
+  {% csrf_token %}
+
+  <label for="name">Ваше имя:</label>
+  <input type="text" id="name" name="name" required>
+
+  <label for="email">Ваш email:</label>
+  <input type="email" id="email" name="email" required>
+
+  <label for="commentary">Ваш комментарий:</label>
+  <textarea id="commentary" name="commentary" required></textarea>
+
+  <label for="phone">Ваш телефон (необязательно):</label>
+  <input type="tel" id="phone" name="phone" placeholder="+7 (XXX) XXX-XX-XX">
+
+  <button type="submit">Отправить</button>
+
+</form>
+</body>
+</html>
