@@ -1,18 +1,21 @@
 from rest_framework import viewsets, pagination
 from rest_framework.permissions import DjangoModelPermissionsOrAnonReadOnly
 from rest_framework.decorators import action
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework.renderers import TemplateHTMLRenderer
 from rest_framework.views import APIView
 from rest_framework import status
 
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 import requests
 from iso8601 import parse_date
 from django.db.models import Q
 from django.shortcuts import render
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 
 from .models import Book, Author, Category, Feedback
 from .serializers import BookSerializer, AuthorSerializer, CategorySerializer, FeedbackSerializer
@@ -29,6 +32,7 @@ class BookViewSet(viewsets.ModelViewSet):
     permission_classes = [DjangoModelPermissionsOrAnonReadOnly] 
     pagination_class = pagination.PageNumberPagination
     pagination_class.page_size = 5
+    authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
         return Book.objects.all()
@@ -161,9 +165,23 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         serializer_class = FeedbackSerializer(queryset, many=True)
         return Response(serializer_class.data)
 
-class UserLoginView(TokenObtainPairView):
+@api_view(['GET', 'POST'])
+def login(request):
     """
-    Обрабатывает авторизацию пользователя, возвращая пары 
-    токенов доступа и обновления.
+    Вход в систему и выдача JWT-токенов.
     """
-    pass
+    permission_classes = [AllowAny]
+    username = request.data.get('username')
+    password = request.data.get('password')
+
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return Response({'detail': 'Пользователь не найден'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if user.check_password(password):  # Проверка пароля
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+        return Response({'refresh': str(refresh), 'access': str(access_token)}, status=status.HTTP_200_OK)
+    else:
+        return Response({'detail': 'Неверный пароль'}, status=status.HTTP_401_UNAUTHORIZED)

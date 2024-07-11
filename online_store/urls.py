@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework import routers
-from .views import BookViewSet, FeedbackForm, FeedbackViewSet
+from .views import BookViewSet, FeedbackForm, FeedbackViewSet, login
 
 
 
@@ -32,4 +32,5 @@ urlpatterns = [
     path('api-auth/', include('rest_framework.urls')),
     # path('login/', UserLoginView.as_view(), name='login'),
     path('feedback/', FeedbackForm.as_view(), name='feedback'),
+    path('login/', login, name='login')
 ] + router.urls + router_feedback.urls

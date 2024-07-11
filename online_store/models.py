@@ -5,17 +5,17 @@ from phonenumber_field.modelfields import PhoneNumberField
 
 class Author(models.Model):
     name = models.CharField(max_length=255)
-    class Meta:
-             constraints = [
-                 UniqueConstraint(fields=['name'], name='unique_author_name')
-             ]
+    # class Meta:
+    #          constraints = [
+    #              UniqueConstraint(fields=['name'], name='unique_author_name')
+    #          ]
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
-    class Meta:
-             constraints = [
-                 UniqueConstraint(fields=['name'], name='unique_category_name')
-             ]
+    # class Meta:
+    #          constraints = [
+    #              UniqueConstraint(fields=['name'], name='unique_category_name')
+    #          ]
 
 class Feedback(models.Model):
     email = models.EmailField()
