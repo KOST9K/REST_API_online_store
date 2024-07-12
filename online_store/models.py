@@ -13,6 +13,7 @@ class Author(models.Model):
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, related_name='subcategories')
     # class Meta:
     #          constraints = [
     #              UniqueConstraint(fields=['name'], name='unique_category_name')
@@ -45,5 +46,4 @@ class Feedback(models.Model):
 
     def __str__(self):
         return self.name
-
 

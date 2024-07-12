@@ -1,20 +1,22 @@
-from rest_framework import viewsets, pagination
-from rest_framework.permissions import DjangoModelPermissionsOrAnonReadOnly
+from rest_framework import viewsets, pagination, status, filters
 from rest_framework.decorators import action
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
+
+from rest_framework.permissions import AllowAny
+from rest_framework.permissions import DjangoModelPermissionsOrAnonReadOnly
 
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-import requests
-from iso8601 import parse_date
-from django.db.models import Q
 from django.shortcuts import render
 from django.contrib.auth.models import User
+from django.db.models import Q
+
+from iso8601 import parse_date
+import requests
+import django_filters
 
 from .models import Book, Author, Category, Feedback
 from .serializers import BookSerializer, AuthorSerializer, CategorySerializer, FeedbackSerializer
@@ -27,6 +29,17 @@ from .serializers import BookSerializer, AuthorSerializer, CategorySerializer, F
 # MIchael Barlotta or Michael Barlotta or Michael J. Barlotta in authors
 # books duplicates with category and without
 
+class BookFilter(django_filters.FilterSet):
+    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
+    author = django_filters.CharFilter(field_name='authors__name', lookup_expr='icontains')
+    status = django_filters.CharFilter(field_name='status', lookup_expr='icontains')
+    publishedDate = django_filters.DateFilter(field_name='publishedDate', lookup_expr='gte')
+
+    class Meta:
+        model = Book
+        fields = ['title', 'author', 'status', 'publishedDate']
+
+
 class BookViewSet(viewsets.ModelViewSet):
     serializer_class = BookSerializer
     permission_classes = [DjangoModelPermissionsOrAnonReadOnly] 
@@ -34,11 +47,10 @@ class BookViewSet(viewsets.ModelViewSet):
     pagination_class.page_size = 5
     authentication_classes = [JWTAuthentication]
 
-    def get_queryset(self):
-        return Book.objects.all()
+    filter_backends = [filters.SearchFilter, django_filters.rest_framework.DjangoFilterBackend]
+    filterset_class = BookFilter
 
-    def list(self, request):
-        """Recieve all books"""
+    def get_queryset(self):
         json_url = 'https://gitlab.grokhotov.ru/hr/python-test-vacancy/-/raw/master/books.json?inline=false'
         response = requests.get(json_url)
 
@@ -47,7 +59,7 @@ class BookViewSet(viewsets.ModelViewSet):
 
             for book_data in data:
                 title = book_data.get('title')
-                authors_list= book_data.get('authors')
+                authors_list = book_data.get('authors')
                 categories_list = book_data.get('categories')
 
                 if title:
@@ -75,7 +87,7 @@ class BookViewSet(viewsets.ModelViewSet):
                 else:
                     book_data['publishedDate'] = None
 
-                book = Book.objects.create(**book_data)
+                book = Book.objects.create(*book_data)
 
                 if authors_list:
                     for author_name in authors_list:
@@ -91,15 +103,75 @@ class BookViewSet(viewsets.ModelViewSet):
                 else:
                     book.categories.add(new_category)
 
-        queryset = self.get_queryset()
-        page = self.paginate_queryset(queryset) 
+        return Book.objects.all()
 
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        else:
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(serializer.data)
+
+    # def get_queryset(self):
+    #     return Book.objects.all()
+    # 
+    # def list(self, request):
+    #     """Recieve all books"""
+    #     json_url = 'https://gitlab.grokhotov.ru/hr/python-test-vacancy/-/raw/master/books.json?inline=false'
+    #     response = requests.get(json_url)
+
+    #     if response.status_code == 200:
+    #         data = response.json()
+
+    #         for book_data in data:
+    #             title = book_data.get('title')
+    #             authors_list= book_data.get('authors')
+    #             categories_list = book_data.get('categories')
+
+    #             if title:
+    #                 # Deeper duplicates filtration, but less effective (books have same author with mistakes in name)
+    #                 # authors = Author.objects.filter(name__in=authors_list)
+    #                 # if Book.objects.filter(title=title, authors__in=authors).exists():
+    #                 if Book.objects.filter(title=title).exists():
+    #                     continue  
+
+    #             fields_to_remove = ["authors", "categories"]
+    #             for field in fields_to_remove:
+    #                 if field in book_data:
+    #                     del book_data[field]
+
+    #             if any(author == '' for author in authors_list):
+    #                 authors_list.remove("")
+
+    #             if any(category == '' for category in categories_list):
+    #                 categories_list.remove("")
+                    
+    #             published_date_str = book_data.get('publishedDate', {}).get('$date')
+    #             if published_date_str:
+    #                 published_date = parse_date(published_date_str)
+    #                 book_data['publishedDate'] = published_date
+    #             else:
+    #                 book_data['publishedDate'] = None
+
+    #             book = Book.objects.create(**book_data)
+
+    #             if authors_list:
+    #                 for author_name in authors_list:
+    #                     author, created = Author.objects.get_or_create(name=author_name)
+    #                     book.authors.add(author)
+
+    #             new_category, created = Category.objects.get_or_create(name="New")
+
+    #             if categories_list:
+    #                 for category_name in categories_list:
+    #                     category, created = Category.objects.get_or_create(name=category_name)
+    #                     book.categories.add(category)
+    #             else:
+    #                 book.categories.add(new_category)
+
+    #     queryset = self.get_queryset()
+    #     page = self.paginate_queryset(queryset)
+
+    #     if page is not None:
+    #         serializer = self.get_serializer(page, many=True)
+    #         return self.get_paginated_response(serializer.data)
+    #     else:
+    #         serializer = self.get_serializer(queryset, many=True)
+    #         return Response(serializer.data) 
             
         
     @action(detail=False, methods=['get'], url_path='category/(?P<category>\w+)')
@@ -116,7 +188,6 @@ class BookViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='categories/(?P<level>\d+)')
     def get_nested_categories(self, request, level):
-    
         """Recieving current and next deep category"""
         level = int(level)
        
