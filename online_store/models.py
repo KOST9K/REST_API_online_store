@@ -1,6 +1,5 @@
 from django.db import models
 from django.db.models import UniqueConstraint
-from django.contrib.auth.models import AbstractUser
 from phonenumber_field.modelfields import PhoneNumberField
 
 class Author(models.Model):
@@ -9,6 +8,8 @@ class Author(models.Model):
     #          constraints = [
     #              UniqueConstraint(fields=['name'], name='unique_author_name')
     #          ]
+    def __str__(self):
+        return self.name
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
@@ -16,18 +17,8 @@ class Category(models.Model):
     #          constraints = [
     #              UniqueConstraint(fields=['name'], name='unique_category_name')
     #          ]
-
-class Feedback(models.Model):
-    email = models.EmailField()
-    name = models.CharField(max_length=255)
-    commentary = models.TextField()
-    # phone = PhoneNumberField(blank=True)
-    phone = models.CharField(max_length=255)
-
     def __str__(self):
         return self.name
-
-     
 
 class Book(models.Model):
     app_label = 'online_store' 
@@ -45,11 +36,14 @@ class Book(models.Model):
     def __str__(self):
         return self.title
     
-    
-# class User(AbstractUser):
-#     login = AbstractUser.username
-#     password = AbstractUser.password
-#     groups = models.ExpressionList
-#     user_permissions = models.ExpressionList
+class Feedback(models.Model):
+    email = models.EmailField()
+    name = models.CharField(max_length=255)
+    commentary = models.TextField()
+    # phone = PhoneNumberField(blank=True)
+    phone = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.name
 
 

@@ -14,7 +14,6 @@ import requests
 from iso8601 import parse_date
 from django.db.models import Q
 from django.shortcuts import render
-from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 
 from .models import Book, Author, Category, Feedback
@@ -22,6 +21,7 @@ from .serializers import BookSerializer, AuthorSerializer, CategorySerializer, F
 
 # ISBN have symbols instead nums
 # Authors have "" and Jr.
+# Categories have ""
 # short and long description can have ""
 # publishDate can be not exist
 # MIchael Barlotta or Michael Barlotta or Michael J. Barlotta in authors
@@ -64,6 +64,9 @@ class BookViewSet(viewsets.ModelViewSet):
 
                 if any(author == '' for author in authors_list):
                     authors_list.remove("")
+
+                if any(category == '' for category in categories_list):
+                    categories_list.remove("")
                     
                 published_date_str = book_data.get('publishedDate', {}).get('$date')
                 if published_date_str:
@@ -79,13 +82,14 @@ class BookViewSet(viewsets.ModelViewSet):
                         author, created = Author.objects.get_or_create(name=author_name)
                         book.authors.add(author)
 
+                new_category, created = Category.objects.get_or_create(name="New")
+
                 if categories_list:
                     for category_name in categories_list:
                         category, created = Category.objects.get_or_create(name=category_name)
                         book.categories.add(category)
                 else:
-                    category = Category.objects.create(name="New")
-                    book.categories.add(category)
+                    book.categories.add(new_category)
 
         queryset = self.get_queryset()
         page = self.paginate_queryset(queryset) 
@@ -110,22 +114,32 @@ class BookViewSet(viewsets.ModelViewSet):
             serializer = BookSerializer(books, many=True)
             return Response(serializer.data)
     
-    # @action(detail=False, methods=['get'], url_path='categories/(?P<level>\d+)')
-    # def get_nested_categories(self, request, level):
+    @action(detail=False, methods=['get'], url_path='categories/(?P<level>\d+)')
+    def get_nested_categories(self, request, level):
     
-    #     """Recieving current and next deep category"""
-    #     level = int(level)
-    #     categories = Category.objects.filter(
-    #         Q(level__gte=level)  # Фильтруем категории, уровень которых больше или равен заданному
-    #     ).distinct('name')  # Извлекаем только уникальные категории
+        """Recieving current and next deep category"""
+        level = int(level)
+       
+        book_categories = []
+        books = Book.objects.all()
 
-    #     page = self.paginate_queryset(categories)  # Используем пагинацию
-    #     if page is not None:
-    #         serializer = CategorySerializer(page, many=True)
-    #         return self.get_paginated_response(serializer.data)  # Возвращаем пагинированный ответ
-    #     else:
-    #         serializer = CategorySerializer(categories, many=True)
-    #         return Response(serializer.data)  # Возвращаем обычный ответ, если пагинация не требуется
+        for book in books:
+            categories_by_book = []
+            for category in book.categories.all():
+                categories_by_book.append(category) 
+
+            # Проверяем, есть ли категория на уровне level
+            if level < len(categories_by_book):
+                current_category = categories_by_book[level]
+                next_category = categories_by_book[level + 1] if level + 1 < len(categories_by_book) else None
+
+                book_categories.append({
+                    "book_name": book.title,
+                    "category_name": CategorySerializer(current_category).data,
+                    "children": CategorySerializer(next_category, many=False).data if next_category else None 
+                })
+
+        return Response(book_categories)
     
     @action(detail=False, methods=['get'], url_path='(?P<title>[^/]+)')
     def get_certain_book(self, request, title):
@@ -149,21 +163,7 @@ class FeedbackForm(APIView):
             serializer.save()
             return Response({'message': 'Спасибо за вашу обратную связь!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    
-        # feedbacks = self.get_queryset()
-        # serializer = FeedbackSerializer(feedbacks, many=True)
-        # return Response(serializer.data)
 
-class FeedbackViewSet(viewsets.ModelViewSet):
-    def get_queryset(self):
-        return Feedback.objects.all()
-
-    @action(detail=False, methods=['get'], url_path='list')
-    def get_allfeedback(self, request):
-        queryset = Feedback.objects.all()
-        serializer_class = FeedbackSerializer(queryset, many=True)
-        return Response(serializer_class.data)
 
 @api_view(['GET', 'POST'])
 def login(request):
@@ -179,7 +179,7 @@ def login(request):
     except User.DoesNotExist:
         return Response({'detail': 'Пользователь не найден'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    if user.check_password(password):  # Проверка пароля
+    if user.check_password(password):
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
         return Response({'refresh': str(refresh), 'access': str(access_token)}, status=status.HTTP_200_OK)
