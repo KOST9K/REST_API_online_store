@@ -10,24 +10,43 @@ from rest_framework.permissions import DjangoModelPermissionsOrAnonReadOnly
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from django.conf import settings
 from django.shortcuts import render
 from django.contrib.auth.models import User
-from django.db.models import Q
 
 from iso8601 import parse_date
-import requests
+import requests, time
 import django_filters
+import os
 
 from .models import Book, Author, Category, Feedback
 from .serializers import BookSerializer, AuthorSerializer, CategorySerializer, FeedbackSerializer
 
-# ISBN have symbols instead nums
-# Authors have "" and Jr.
-# Categories have ""
-# short and long description can have ""
-# publishDate can be not exist
-# MIchael Barlotta or Michael Barlotta or Michael J. Barlotta in authors
-# books duplicates with category and without
+def download_image(thumbnail_url, image_path):
+        if os.path.exists(image_path):
+            print(f"Image already exists at {image_path}. Skipping download.")
+            return True
+
+        retries = 3
+        delay = 5
+
+        for attempt in range(retries):
+            try:
+                response = requests.get(thumbnail_url, stream=True, timeout=10)
+                response.raise_for_status()
+                with open(image_path, 'wb') as image_file:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        if chunk:
+                            image_file.write(chunk)
+                return True
+            except requests.exceptions.RequestException as e:
+                print(f"Error while image download: {e}")
+                if attempt < retries - 1:
+                    print(f"Retry in {delay} seconds...")
+                    time.sleep(delay)
+                else:
+                    raise 
+        return False
 
 class BookFilter(django_filters.FilterSet):
     title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
@@ -50,6 +69,8 @@ class BookViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, django_filters.rest_framework.DjangoFilterBackend]
     filterset_class = BookFilter
 
+    
+
     def get_queryset(self):
         json_url = 'https://gitlab.grokhotov.ru/hr/python-test-vacancy/-/raw/master/books.json?inline=false'
         response = requests.get(json_url)
@@ -61,7 +82,7 @@ class BookViewSet(viewsets.ModelViewSet):
                 title = book_data.get('title')
                 authors_list = book_data.get('authors')
                 categories_list = book_data.get('categories')
-
+                thumbnail = book_data.get('thumbnailUrl')
                 if title:
                     # Deeper duplicates filtration, but less effective (books have same author with mistakes in name)
                     # authors = Author.objects.filter(name__in=authors_list)
@@ -69,7 +90,7 @@ class BookViewSet(viewsets.ModelViewSet):
                     if Book.objects.filter(title=title).exists():
                         continue  
 
-                fields_to_remove = ["authors", "categories"]
+                fields_to_remove = ["authors", "categories", "thumbnailUrl"]
                 for field in fields_to_remove:
                     if field in book_data:
                         del book_data[field]
@@ -87,7 +108,14 @@ class BookViewSet(viewsets.ModelViewSet):
                 else:
                     book_data['publishedDate'] = None
 
-                book = Book.objects.create(*book_data)
+                if thumbnail:
+                    filename = os.path.basename(thumbnail)
+                    image_path = os.path.join(settings.MEDIA_ROOT, 'book_images', filename)
+
+                    if download_image(thumbnail, image_path):
+                        book_data['thumbnail'] = os.path.join('book_images', filename)
+
+                book = Book.objects.create(**book_data)
 
                 if authors_list:
                     for author_name in authors_list:
@@ -103,76 +131,7 @@ class BookViewSet(viewsets.ModelViewSet):
                 else:
                     book.categories.add(new_category)
 
-        return Book.objects.all()
-
-
-    # def get_queryset(self):
-    #     return Book.objects.all()
-    # 
-    # def list(self, request):
-    #     """Recieve all books"""
-    #     json_url = 'https://gitlab.grokhotov.ru/hr/python-test-vacancy/-/raw/master/books.json?inline=false'
-    #     response = requests.get(json_url)
-
-    #     if response.status_code == 200:
-    #         data = response.json()
-
-    #         for book_data in data:
-    #             title = book_data.get('title')
-    #             authors_list= book_data.get('authors')
-    #             categories_list = book_data.get('categories')
-
-    #             if title:
-    #                 # Deeper duplicates filtration, but less effective (books have same author with mistakes in name)
-    #                 # authors = Author.objects.filter(name__in=authors_list)
-    #                 # if Book.objects.filter(title=title, authors__in=authors).exists():
-    #                 if Book.objects.filter(title=title).exists():
-    #                     continue  
-
-    #             fields_to_remove = ["authors", "categories"]
-    #             for field in fields_to_remove:
-    #                 if field in book_data:
-    #                     del book_data[field]
-
-    #             if any(author == '' for author in authors_list):
-    #                 authors_list.remove("")
-
-    #             if any(category == '' for category in categories_list):
-    #                 categories_list.remove("")
-                    
-    #             published_date_str = book_data.get('publishedDate', {}).get('$date')
-    #             if published_date_str:
-    #                 published_date = parse_date(published_date_str)
-    #                 book_data['publishedDate'] = published_date
-    #             else:
-    #                 book_data['publishedDate'] = None
-
-    #             book = Book.objects.create(**book_data)
-
-    #             if authors_list:
-    #                 for author_name in authors_list:
-    #                     author, created = Author.objects.get_or_create(name=author_name)
-    #                     book.authors.add(author)
-
-    #             new_category, created = Category.objects.get_or_create(name="New")
-
-    #             if categories_list:
-    #                 for category_name in categories_list:
-    #                     category, created = Category.objects.get_or_create(name=category_name)
-    #                     book.categories.add(category)
-    #             else:
-    #                 book.categories.add(new_category)
-
-    #     queryset = self.get_queryset()
-    #     page = self.paginate_queryset(queryset)
-
-    #     if page is not None:
-    #         serializer = self.get_serializer(page, many=True)
-    #         return self.get_paginated_response(serializer.data)
-    #     else:
-    #         serializer = self.get_serializer(queryset, many=True)
-    #         return Response(serializer.data) 
-            
+        return Book.objects.all()            
         
     @action(detail=False, methods=['get'], url_path='category/(?P<category>\w+)')
     def get_by_category(self, request, category):
@@ -199,7 +158,6 @@ class BookViewSet(viewsets.ModelViewSet):
             for category in book.categories.all():
                 categories_by_book.append(category) 
 
-            # Проверяем, есть ли категория на уровне level
             if level < len(categories_by_book):
                 current_category = categories_by_book[level]
                 next_category = categories_by_book[level + 1] if level + 1 < len(categories_by_book) else None
@@ -214,11 +172,24 @@ class BookViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='(?P<title>[^/]+)')
     def get_certain_book(self, request, title):
-        """Recieve certain book"""
-        print(title)
-        books = Book.objects.filter(Q(title__icontains=title))
-        serializer = BookSerializer(books, many=True)
-        return Response(serializer.data)
+        """Recieve certain book and 5 books from the same category"""
+        same_category_books_number =5
+        book = Book.objects.filter(title=title).first()
+        if book:
+            category = book.categories.first()
+            if category:
+                related_books = Book.objects.filter(categories=category).exclude(title=title).order_by('?')[:same_category_books_number]
+
+                serializer = BookSerializer(related_books, many=True)
+
+                related_books_data = serializer.data
+                related_books_data.insert(0, BookSerializer(book).data)
+
+                return Response(related_books_data)
+            else:
+                return Response({"detail": "Book has no category"}, status=400)
+        else:
+            return Response({"detail": "Book not found"}, status=404)
 
 
 class FeedbackForm(APIView):
